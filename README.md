@@ -84,12 +84,36 @@
       └── java/com/example/restocknotificationsysyem/ 
       └── domain/service/ # 서비스 계층 테스트
 ---
+## 설치 및 실행 방법
 
-### 2️⃣ **API 명세서**
+**1. 프로젝트 클론**  
+```bash
+git clone git@github.com:HwiyoungJeon/restocknotificationSystem.git
+cd reviceservice
+```
+**2. Docker Compose 설치**  
+```bash
+sudo apt update
+sudo apt install docker.io docker-compose -y
+```
+**3. Docker Compose-Redis 실행** 
+```bash
+docker-compose up -d
+docker ps
+docker exec -it {실행된 Redis 컨테이너이름} redis-cli
+```
+**4. 프로젝트 빌드 및 실행**  
+```bash
+./gradlew build
+./gradlew bootRun
+```
+
+---
+### **API 명세서**
 
 **API 스펙**
 ```markdown
-## 📘 API 명세서
+## API 명세서
 
 ### 1. **상품 재입고 및 알림 전송**
 - **URL**: `POST /products/{productId}/notifications/re-stock`
@@ -98,7 +122,7 @@
 - **URL**: `POST /admin/products/{productId}/notifications/re-stock`
 ```
 
-### **1️⃣ 성공 응답 예시**
+### **성공 응답 예시**
 ```json
 {
     "message": "정상적으로 실행 되었습니다.",
@@ -205,7 +229,7 @@ CREATE TABLE ProductNotificationHistory (
     FOREIGN KEY (last_sent_user_id) REFERENCES User(id) ON DELETE SET NULL -- user_id -> id
 );
 ```
-## 📘 **ERD 관계 설명**
+## **ERD 관계 설명**
 - **Product** (상품) - **ProductUserNotification** (알림 설정)
   - 관계: 1:N 관계 (한 상품에 여러 유저가 알림을 설정할 수 있음)
   - 연결: Product.id → ProductUserNotification.product_id
@@ -213,10 +237,6 @@ CREATE TABLE ProductNotificationHistory (
 - **Product** (상품) - **ProductUserNotificationHistory** (알림 발송 이력)
   - 관계: 1:N 관계 (한 상품에 대해 여러 유저에게 알림이 발송됨)
   - 연결: Product.id → ProductUserNotificationHistory.product_id
-
-- **User** (유저) - **ProductUserNotificationHistory** (알림 발송 이력)
-  - 관계: 1:N 관계 (한 유저가 여러 상품에 대한 알림을 받을 수 있음)
-  - 연결: User.id → ProductUserNotificationHistory.user_id
 
 - **Product** (상품) - **ProductNotificationHistory** (재입고 이력)
   - 관계: 1:N 관계 (하나의 상품은 여러 재입고 이력을 가질 수 있음)
@@ -226,7 +246,103 @@ CREATE TABLE ProductNotificationHistory (
   - 관계: 1:N 관계 (하나의 유저가 여러 알림을 보낼 수 있음)
   - 연결: User.id → ProductNotificationHistory.last_sent_user_id
 
-## 📘 **ERD 다이어그램**
+## **ERD 다이어그램**
 ![image](https://github.com/user-attachments/assets/ceacfc4b-979f-45dc-8d66-a207182e9e18)
+
+---
+## **동작 흐름도**
+
+다음은 재입고 알림 시스템의 **전체 동작 과정**에 대한 흐름도입니다.
+
+1️⃣ **스케줄러**가 1분마다 재입고 발생 여부를 확인합니다.
+
+2️⃣ 재입고가 발생한 상품에 대해 **알림 전송을 시작**합니다.
+
+3️⃣ ProductNotificationHistory에 알림 상태를 IN_PROGRESS로 저장합니다.
+
+4️⃣ ProductUserNotification 테이블에 등록된 모든 유저에게 알림을 전송합니다.
+
+5️⃣ 재고가 소진되면 알림을 중단하고, 상태를 **CANCELED_BY_SOLD_OUT**로 업데이트합니다.
+
+6️⃣ 모든 유저에게 알림이 성공적으로 발송되면 상태를 **COMPLETED**로 업데이트합니다.
+
+---
+## **동작 시연**
+
+### 1. **재입고 알림 전송 API 예시 (Postman)**
+<details>
+  <summary>🖼️ 재입고 알림 전송 API 보기</summary>
+  <br>
+  <img src="https://github.com/user-attachments/assets/6488d9f6-c791-47c2-aeff-6512ce3e5f1d" alt="재입고 알림 API" style="max-width:100%;"/>
+</details>
+
+### 2. **재입고 알림 전송 API (manual) (Postman)**
+<details>
+  <summary>🖼️재입고 알림 전송 API (manual) 보기</summary>
+  <br>
+  <img src="https://github.com/user-attachments/assets/8ea3c6e8-4e4a-4dcd-b4c5-cdc6ca11369e" alt="재입고 알림 전송 API (manual)" style="max-width:100%;"/>
+</details>
+
+---
+## 📘 **테스트 코드 상세 설명**
+
+### **🧪 RestockNotificationServiceIntegrationTest**
+
+통합 테스트 클래스 **RestockNotificationServiceIntegrationTest**는 데이터베이스와 직접 상호 작용하는 통합 테스트를 포함합니다. 이 테스트는 실제 DB에 접근하여 비즈니스 로직을 검증하는 데 사용됩니다.
+
+
+### **📋 클래스 정보**
+- **테스트 대상**: `RestockNotificationService`
+- **사용 기술**: `@SpringBootTest`, `@Transactional`
+- **주요 기능**: 재입고 로직, 재입고 알림 발송, 예외 상황을 포함한 전반적인 통합 테스트
+
+
+### **📌 주요 메서드**
+| **메서드명**                      | **설명**                                      |
+|---------------------------------|---------------------------------------------|
+| **setUp()**                     | 각 테스트 전에 데이터를 초기화하고 상품 및 사용자 알림 데이터를 추가합니다. |
+| **restockProduct_Success()**    | 재입고 성공 시 정상적으로 동작하는지 테스트합니다. |
+| **restockProduct_StopsWhenOutOfStock()** | 재입고 중 재고 소진 시 알림이 중단되는지 테스트합니다. |
+| **retryNotification_Success()** | 알림 재발송이 정상적으로 동작하는지 테스트합니다. |
+| **findProductById_Fail_ProductNotFound()** | 존재하지 않는 상품 조회 시 예외가 발생하는지 테스트합니다. |
+| **retryNotification_Fail_NoNotificationHistory()** | 알림 이력이 없는 경우 예외가 발생하는지 테스트합니다. |
+
+---
+
+### **📌 통합 테스트 코드 설명**
+
+#### 1️⃣ **setUp() - 데이터 초기화**
+- 테스트 실행 전 **@BeforeEach** 어노테이션을 통해 데이터베이스를 초기화합니다.
+- 상품, 사용자 알림, 알림 이력과 같은 데이터를 미리 생성하여 각 테스트 메서드에 사용할 수 있도록 준비합니다.
+```java
+@BeforeEach
+void setUp() {
+    productUserNotificationHistoryRepository.deleteAll();
+    productNotificationHistoryRepository.deleteAll();
+    productUserNotificationRepository.deleteAll();
+    productRepository.deleteAll();
+
+    product = Product.builder()
+            .stock(1) // 재고 1로 설정
+            .previousStock(5)
+            .restockRound(1)
+            .build();
+    productRepository.save(product);
+
+    ProductUserNotification user1 = ProductUserNotification.builder()
+            .product(product)
+            .userId(101L)
+            .isActive(true)
+            .build();
+
+    ProductUserNotification user2 = ProductUserNotification.builder()
+            .product(product)
+            .userId(102L)
+            .isActive(true)
+            .build();
+
+    productUserNotificationRepository.save(user1);
+    productUserNotificationRepository.save(user2);
+}
 
 

@@ -178,7 +178,7 @@ docker exec -it {실행된 Redis 컨테이너이름} redis-cli
 - **ProductNotificationHistory**: 상품의 재입고 이력을 관리하는 테이블
 
 ```sql
- Product 테이블 생성
+--  Product 테이블 생성
 CREATE TABLE Product (
     id BIGINT AUTO_INCREMENT PRIMARY KEY, -- 기본 키 (Primary Key)
     restock_round INT NOT NULL, -- 재입고 라운드 (NOT NULL)
@@ -191,42 +191,39 @@ CREATE TABLE Product (
 ```sql
 -- ProductUserNotification 테이블 생성 (User-Product 관계 테이블)
 CREATE TABLE ProductUserNotification (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    user_id BIGINT NOT NULL,
-    product_id BIGINT NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    modifiedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES User(id) ON DELETE CASCADE, -- user_id -> id
+    id BIGINT AUTO_INCREMENT PRIMARY KEY, 
+    user_id BIGINT NOT NULL, 
+    product_id BIGINT NOT NULL, 
+    is_active BOOLEAN DEFAULT TRUE, 
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
+    modifiedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, 
     FOREIGN KEY (product_id) REFERENCES Product(id) ON DELETE CASCADE -- product_id -> id
 );
 ```
 ```sql
 -- ProductUserNotificationHistory 테이블 생성 (알림 전송 이력 테이블)
 CREATE TABLE ProductUserNotificationHistory (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    user_id BIGINT NOT NULL,
-    product_id BIGINT NOT NULL,
-    restock_round INT,
-    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    modifiedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES User(id) ON DELETE CASCADE, -- user_id -> id
+    id BIGINT AUTO_INCREMENT PRIMARY KEY, 
+    user_id BIGINT NOT NULL, 
+    product_id BIGINT NOT NULL, 
+    restock_round INT, 
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
+    modifiedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, 
     FOREIGN KEY (product_id) REFERENCES Product(id) ON DELETE CASCADE -- product_id -> id
 );
 ```
 ```sql
 -- ProductNotificationHistory 테이블 생성 (재고 변경 이력 테이블)
 CREATE TABLE ProductNotificationHistory (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    product_id BIGINT NOT NULL,
-    last_sent_user_id BIGINT,
-    restock_round INT,
-    status VARCHAR(50),
-    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    modifiedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (product_id) REFERENCES Product(id) ON DELETE CASCADE, -- product_id -> id
-    FOREIGN KEY (last_sent_user_id) REFERENCES User(id) ON DELETE SET NULL -- user_id -> id
+    id BIGINT AUTO_INCREMENT PRIMARY KEY, 
+    product_id BIGINT NOT NULL, 
+    last_sent_user_id BIGINT, 
+    restock_round INT, 
+    status VARCHAR(50), 
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP, 
+    modifiedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, 
+    FOREIGN KEY (product_id) REFERENCES Product(id) ON DELETE CASCADE -- product_id -> id
 );
 ```
 ## **ERD 관계 설명**
@@ -298,6 +295,217 @@ CREATE TABLE ProductNotificationHistory (
 
 
 ### **📌 주요 메서드**
+
+| **메서드명**                      | **설명**                                      |
+|---------------------------------|---------------------------------------------|
+| **setUp()**                     | 각 테스트 전에 데이터를 초기화하고 상품 및 사용자 알림 데이터를 추가합니다. |
+| **findProductById_Success()**    | 상품을 정상적으로 찾는 기능이 올바르게 동작하는지 테스트합니다. |
+| **findProductById_Fail_ProductNotFound()** | 존재하지 않는 상품을 조회할 때 예외가 발생하는지 테스트합니다.|
+| **createNotificationHistory_Success()** | 알림 히스토리가 정상적으로 생성되는지 테스트합니다. |
+| **increaseRestockRound_Success()** | 상품의 재입고 회차가 정상적으로 1 증가하는지 테스트합니다.|
+| **updateNotificationStatus_Completed()** | 알림 전송 후 상태가 COMPLETED로 정상 변경되는지 테스트합니다. |
+| **sendNotifications_AllUsersNotified()** |모든 활성화된 유저에게 알림이 정상적으로 전송되는지 테스트합니다. |
+| **sendNotifications_StopsWhenOutOfStock()** | 알림 전송 중 재고가 소진되었을 때 알림이 중단되는지 테스트합니다 |
+| **getLatestNotificationHistory_Success()** | 최신 알림 이력이 정상적으로 조회되는지 테스트합니다.|
+| **getLatestNotificationHistory_Fail()** |알림 이력이 없을 때 예외가 발생하는지 테스트합니다. |
+| **findActiveUserNotifications_Success()** | 모든 활성화된 유저가 정상적으로 조회되는지 테스트합니다.|
+
+### **소형 테스트 코드 설명**
+
+#### **setUp() - 데이터 초기화**
+- 각 테스트 전에 호출되어 데이터를 초기화하고 상품과 사용자 알림 데이터를 추가합니다.
+```code
+ @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
+```
+#### **findProductById_Success()**
+- 설명: 상품을 정상적으로 찾는 기능이 올바르게 동작하는지 테스트합니다.
+- 검증 사항:
+  - 상품 ID로 조회한 결과가 기대한 Product 객체와 일치해야 합니다.
+```code
+@Test
+@DisplayName("성공: 상품을 찾는다.")
+void findProductById_Success() {
+    // Given
+    Long productId = 1L;
+    Product product = Product.builder().id(productId).build();
+    when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+
+    // When
+    Product result = restockNotificationService.findProductById(productId);
+
+    // Then
+    assertThat(result).isEqualTo(product);
+}
+```
+#### **findProductById_Fail_ProductNotFound()**
+- 설명: 존재하지 않는 상품을 조회할 때 예외가 발생하는지 테스트합니다.
+- 검증 사항:
+   - 존재하지 않는 상품 ID로 조회했을 때, RestockException 예외가 발생해야 합니다.
+```code
+@Test
+@DisplayName("실패: 존재하지 않는 상품을 조회할 때 예외 발생")
+void findProductById_Fail_ProductNotFound() {
+    // Given
+    Long productId = 1L;
+    when(productRepository.findById(productId)).thenReturn(Optional.empty());
+
+    // When & Then
+    assertThrows(RestockException.class,
+            () -> restockNotificationService.findProductById(1L));
+}
+
+```
+#### **createNotificationHistory_Success()**
+- 설명: 알림 히스토리가 정상적으로 생성되는지 테스트합니다.
+- 검증 사항:
+  - 알림 히스토리 생성 후, 상태가 IN_PROGRESS여야 합니다
+```code
+@Test
+@DisplayName("성공: 알림 히스토리를 생성한다.")
+void createNotificationHistory_Success() {
+    // Given
+    Product product = Product.builder().id(1L).build();
+    ProductNotificationHistory history = ProductNotificationHistory.builder()
+            .product(product)
+            .status(NotificationStatus.IN_PROGRESS)
+            .build();
+    when(productNotificationHistoryRepository.save(any(ProductNotificationHistory.class)))
+            .thenReturn(history);
+
+    // When
+    ProductNotificationHistory result = restockNotificationService.createNotificationHistory(product);
+
+    // Then
+    assertThat(result).isNotNull();
+    assertThat(result.getStatus()).isEqualTo(NotificationStatus.IN_PROGRESS);
+    verify(productNotificationHistoryRepository, times(1)).save(any(ProductNotificationHistory.class));
+}
+
+```
+#### **increaseRestockRound_Success()**
+- 상품의 재입고 회차가 정상적으로 1 증가하는지 테스트합니다.
+```code
+@Test
+@DisplayName("성공: 상품의 재입고 회차가 1 증가한다.")
+void increaseRestockRound_Success() {
+    // Given
+    Product product = Product.builder().id(1L).restockRound(2).build();
+
+    // When
+    product.increaseRestockRound();
+
+    // Then
+    assertThat(product.getRestockRound()).isEqualTo(3);
+}
+
+```
+#### **updateNotificationStatus_Completed()**
+- 알림 전송 후 상태가 COMPLETED로 정상 변경되는지 테스트합니다.
+```code
+@Test
+@DisplayName("성공: 알림 전송 후 상태가 COMPLETED로 업데이트 된다.")
+void updateNotificationStatus_Completed() {
+    // Given
+    ProductNotificationHistory notificationHistory = ProductNotificationHistory.builder()
+            .status(NotificationStatus.IN_PROGRESS)
+            .build();
+
+    // When
+    restockNotificationService.updateNotificationStatus(notificationHistory, NotificationStatus.COMPLETED);
+
+    // Then
+    assertThat(notificationHistory.getStatus()).isEqualTo(NotificationStatus.COMPLETED);
+}
+```
+#### **sendNotifications_AllUsersNotified()**
+- 모든 활성화된 유저에게 알림이 정상적으로 전송되는지 테스트합니다.
+```code
+@Test
+@DisplayName("성공: 모든 활성화된 유저에게 알림 전송")
+void sendNotifications_AllUsersNotified() {
+    // Given
+    Product product = Product.builder().id(1L).stock(10).build();
+    List<ProductUserNotification> users = Arrays.asList(
+            ProductUserNotification.builder().id(1L).userId(1L).build(),
+            ProductUserNotification.builder().id(2L).userId(2L).build()
+    );
+    ProductNotificationHistory notificationHistory = ProductNotificationHistory.builder().build();
+
+    // When
+    restockNotificationService.sendNotifications(product, users, notificationHistory);
+
+    // Then
+    verify(productUserNotificationHistoryRepository, times(2)).save(any(ProductUserNotificationHistory.class));
+}
+
+![image](https://github.com/user-attachments/assets/2fd5e60f-88a5-486b-b51c-7499a1d93b96)
+
+```
+#### **sendNotifications_StopsWhenOutOfStock()**
+- 알림 전송 중 재고가 소진되었을 때 알림이 중단되는지 테스트합니다.
+```code
+@Test
+@DisplayName("성공: 알림이 중간에 중단된다 (품절 발생)")
+void sendNotifications_StopsWhenOutOfStock() {
+    // Given
+    Product product = Product.builder().id(1L).stock(1).build();
+    List<ProductUserNotification> users = Arrays.asList(
+            ProductUserNotification.builder().id(1L).userId(1L).build(),
+            ProductUserNotification.builder().id(2L).userId(2L).build()
+    );
+    ProductNotificationHistory notificationHistory = ProductNotificationHistory.builder().build();
+
+    // When
+    restockNotificationService.sendNotifications(product, users, notificationHistory);
+
+    // Then
+    verify(productUserNotificationHistoryRepository, times(1)).save(any(ProductUserNotificationHistory.class));
+}
+
+```
+#### **getLatestNotificationHistory_Success()**
+- 최신 알림 이력이 정상적으로 조회되는지 테스트합니다.
+```code
+@Test
+@DisplayName("성공: 알림 이력을 가져온다.")
+void getLatestNotificationHistory_Success() {
+    // Given
+    Long productId = 1L;
+    ProductNotificationHistory notificationHistory = ProductNotificationHistory.builder().build();
+    when(productNotificationHistoryRepository.findTopByProductIdOrderByCreatedAtDesc(productId))
+            .thenReturn(Optional.of(notificationHistory));
+
+    // When
+    ProductNotificationHistory result = restockNotificationService.getLatestNotificationHistory(productId);
+
+    // Then
+    assertThat(result).isNotNull();
+}
+
+```
+#### **getLatestNotificationHistory_Fail()**
+- 알림 이력이 없을 때 예외가 발생하는지 테스트합니다.
+```code
+@Test
+@DisplayName("실패: 알림 이력을 가져오지 못할 때 예외 발생")
+void getLatestNotificationHistory_Fail() {
+    // Given
+    Long productId = 1L;
+    when(productNotificationHistoryRepository.findTopByProductIdOrderByCreatedAtDesc(productId))
+            .thenReturn(Optional.empty());
+
+    // When & Then
+    assertThrows(RestockException.class,
+            () -> restockNotificationService.findProductById(1L));
+}
+
+```
+
+
+---
 | **메서드명**                      | **설명**                                      |
 |---------------------------------|---------------------------------------------|
 | **setUp()**                     | 각 테스트 전에 데이터를 초기화하고 상품 및 사용자 알림 데이터를 추가합니다. |
@@ -309,9 +517,9 @@ CREATE TABLE ProductNotificationHistory (
 
 ---
 
-### **📌 통합 테스트 코드 설명**
+### **📌 통합(중형) 테스트 코드 설명**
 
-#### 1️⃣ **setUp() - 데이터 초기화**
+#### **setUp() - 데이터 초기화**
 - 테스트 실행 전 **@BeforeEach** 어노테이션을 통해 데이터베이스를 초기화합니다.
 - 상품, 사용자 알림, 알림 이력과 같은 데이터를 미리 생성하여 각 테스트 메서드에 사용할 수 있도록 준비합니다.
 ```java

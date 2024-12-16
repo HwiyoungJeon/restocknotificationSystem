@@ -85,6 +85,148 @@
       └── domain/service/ # 서비스 계층 테스트
 ---
 
+### 2️⃣ **API 명세서**
 
+**API 스펙**
+```markdown
+## 📘 API 명세서
+
+### 1. **상품 재입고 및 알림 전송**
+- **URL**: `POST /products/{productId}/notifications/re-stock`
+
+### 2. **재입고 알림 전송 API(manual)**
+- **URL**: `POST /admin/products/{productId}/notifications/re-stock`
+```
+
+### **1️⃣ 성공 응답 예시**
+```json
+{
+    "message": "정상적으로 실행 되었습니다.",
+    "code": 200,
+    "data": {
+        "productId": 1,
+        "stock": 96,
+        "restockRound": 3,
+        "restockTime": "2024-12-16 16:24:48",
+        "notificationHistoryId": 7,
+        "status": "COMPLETED",
+        "notificationStartTime": "2024-12-16 16:24:43",
+        "notificationEndTime": "2024-12-16 16:24:43",
+        "lastSentUserId": 1,
+        "notifiedUsers": [
+            {
+                "userId": 1,
+                "notificationSent": true
+            }
+        ]
+    }
+}
+
+```
+## **API 응답 필드 상세 설명**
+
+| **필드명**         | **타입**   | **설명**                                           |
+|------------------|------------|--------------------------------------------------|
+| **message**       | `String`   | API 호출에 대한 응답 메시지                         | 
+| **code**          | `Integer`  | HTTP 상태 코드 (200 - OK)                         |
+| **data**          | `Object`   | 호출 결과에 대한 실제 데이터                      |
+| **productId**     | `Long`     | 재입고가 발생한 상품의 ID                          |
+| **stock**         | `Integer`  | 재입고 후 남아있는 재고 수량                        |
+| **restockRound**  | `Integer`  | 재입고 회차 (몇 번째 재입고인지)                    |
+| **restockTime**   | `String`   | 재입고가 발생한 시간 (yyyy-MM-dd HH:mm:ss)          |
+| **notificationHistoryId** | `Long` | 이번 재입고 알림과 관련된 알림 히스토리 ID         |
+| **status**        | `String`   | 알림 상태 (IN_PROGRESS, COMPLETED, CANCELED_BY_SOLD_OUT, CANCELED_BY_ERROR) |
+| **notificationStartTime** | `String` | 알림 발송이 시작된 시간 (yyyy-MM-dd HH:mm:ss)    |
+| **notificationEndTime** | `String` | 알림 발송이 종료된 시간 (yyyy-MM-dd HH:mm:ss)     |
+| **lastSentUserId** | `Long`     | 마지막으로 알림을 전송한 사용자 ID                 |
+| **notifiedUsers**  | `Array`    | 알림을 받은 유저 정보 배열                         |
+| **userId**         | `Long`     | 알림을 받은 유저의 ID                             
+| **notificationSent** | `Boolean`| 해당 유저에게 알림이 정상적으로 발송되었는지 여부  |
+
+---
+## **ERD 구조 및 상세 설명**
+
+재입고 알림 시스템의 ERD(Entity Relationship Diagram)는 아래와 같은 테이블로 구성됩니다.
+
+- **Product**: 상품 정보를 관리하는 테이블
+- **ProductUserNotification**: 유저가 특정 상품에 대해 알림을 설정한 정보를 관리하는 테이블
+- **ProductUserNotificationHistory**: 유저별로 상품에 대해 알림이 전송된 이력을 관리하는 테이블
+- **ProductNotificationHistory**: 상품의 재입고 이력을 관리하는 테이블
+
+```sql
+ Product 테이블 생성
+CREATE TABLE Product (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY, -- 기본 키 (Primary Key)
+    restock_round INT NOT NULL, -- 재입고 라운드 (NOT NULL)
+    stock INT NOT NULL, -- 현재 재고 (NOT NULL)
+    previousStock INT, -- 이전 재고 (NULL 허용)
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- 생성 시간
+    modifiedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP -- 수정 시간
+);
+```
+```sql
+-- ProductUserNotification 테이블 생성 (User-Product 관계 테이블)
+CREATE TABLE ProductUserNotification (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    modifiedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES User(id) ON DELETE CASCADE, -- user_id -> id
+    FOREIGN KEY (product_id) REFERENCES Product(id) ON DELETE CASCADE -- product_id -> id
+);
+```
+```sql
+-- ProductUserNotificationHistory 테이블 생성 (알림 전송 이력 테이블)
+CREATE TABLE ProductUserNotificationHistory (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    restock_round INT,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    modifiedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES User(id) ON DELETE CASCADE, -- user_id -> id
+    FOREIGN KEY (product_id) REFERENCES Product(id) ON DELETE CASCADE -- product_id -> id
+);
+```
+```sql
+-- ProductNotificationHistory 테이블 생성 (재고 변경 이력 테이블)
+CREATE TABLE ProductNotificationHistory (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    product_id BIGINT NOT NULL,
+    last_sent_user_id BIGINT,
+    restock_round INT,
+    status VARCHAR(50),
+    createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    modifiedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES Product(id) ON DELETE CASCADE, -- product_id -> id
+    FOREIGN KEY (last_sent_user_id) REFERENCES User(id) ON DELETE SET NULL -- user_id -> id
+);
+```
+## 📘 **ERD 관계 설명**
+- **Product** (상품) - **ProductUserNotification** (알림 설정)
+  - 관계: 1:N 관계 (한 상품에 여러 유저가 알림을 설정할 수 있음)
+  - 연결: Product.id → ProductUserNotification.product_id
+
+- **Product** (상품) - **ProductUserNotificationHistory** (알림 발송 이력)
+  - 관계: 1:N 관계 (한 상품에 대해 여러 유저에게 알림이 발송됨)
+  - 연결: Product.id → ProductUserNotificationHistory.product_id
+
+- **User** (유저) - **ProductUserNotificationHistory** (알림 발송 이력)
+  - 관계: 1:N 관계 (한 유저가 여러 상품에 대한 알림을 받을 수 있음)
+  - 연결: User.id → ProductUserNotificationHistory.user_id
+
+- **Product** (상품) - **ProductNotificationHistory** (재입고 이력)
+  - 관계: 1:N 관계 (하나의 상품은 여러 재입고 이력을 가질 수 있음)
+  - 연결: Product.id → ProductNotificationHistory.product_id
+
+- **User** (유저) - **ProductNotificationHistory** (알림 이력)
+  - 관계: 1:N 관계 (하나의 유저가 여러 알림을 보낼 수 있음)
+  - 연결: User.id → ProductNotificationHistory.last_sent_user_id
+
+## 📘 **ERD 다이어그램**
+![image](https://github.com/user-attachments/assets/ceacfc4b-979f-45dc-8d66-a207182e9e18)
 
 

@@ -314,7 +314,7 @@ CREATE TABLE ProductNotificationHistory (
 
 #### **setUp() - 데이터 초기화**
 - 각 테스트 전에 호출되어 데이터를 초기화하고 상품과 사용자 알림 데이터를 추가합니다.
-```code
+```java
  @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
@@ -324,7 +324,7 @@ CREATE TABLE ProductNotificationHistory (
 - 설명: 상품을 정상적으로 찾는 기능이 올바르게 동작하는지 테스트합니다.
 - 검증 사항:
   - 상품 ID로 조회한 결과가 기대한 Product 객체와 일치해야 합니다.
-```code
+```java
 @Test
 @DisplayName("성공: 상품을 찾는다.")
 void findProductById_Success() {
@@ -344,7 +344,7 @@ void findProductById_Success() {
 - 설명: 존재하지 않는 상품을 조회할 때 예외가 발생하는지 테스트합니다.
 - 검증 사항:
    - 존재하지 않는 상품 ID로 조회했을 때, RestockException 예외가 발생해야 합니다.
-```code
+```java
 @Test
 @DisplayName("실패: 존재하지 않는 상품을 조회할 때 예외 발생")
 void findProductById_Fail_ProductNotFound() {
@@ -362,7 +362,7 @@ void findProductById_Fail_ProductNotFound() {
 - 설명: 알림 히스토리가 정상적으로 생성되는지 테스트합니다.
 - 검증 사항:
   - 알림 히스토리 생성 후, 상태가 IN_PROGRESS여야 합니다
-```code
+```java
 @Test
 @DisplayName("성공: 알림 히스토리를 생성한다.")
 void createNotificationHistory_Success() {
@@ -387,7 +387,7 @@ void createNotificationHistory_Success() {
 ```
 #### **increaseRestockRound_Success()**
 - 상품의 재입고 회차가 정상적으로 1 증가하는지 테스트합니다.
-```code
+```java
 @Test
 @DisplayName("성공: 상품의 재입고 회차가 1 증가한다.")
 void increaseRestockRound_Success() {
@@ -404,7 +404,7 @@ void increaseRestockRound_Success() {
 ```
 #### **updateNotificationStatus_Completed()**
 - 알림 전송 후 상태가 COMPLETED로 정상 변경되는지 테스트합니다.
-```code
+```java
 @Test
 @DisplayName("성공: 알림 전송 후 상태가 COMPLETED로 업데이트 된다.")
 void updateNotificationStatus_Completed() {
@@ -422,7 +422,7 @@ void updateNotificationStatus_Completed() {
 ```
 #### **sendNotifications_AllUsersNotified()**
 - 모든 활성화된 유저에게 알림이 정상적으로 전송되는지 테스트합니다.
-```code
+```java
 @Test
 @DisplayName("성공: 모든 활성화된 유저에게 알림 전송")
 void sendNotifications_AllUsersNotified() {
@@ -446,7 +446,7 @@ void sendNotifications_AllUsersNotified() {
 ```
 #### **sendNotifications_StopsWhenOutOfStock()**
 - 알림 전송 중 재고가 소진되었을 때 알림이 중단되는지 테스트합니다.
-```code
+```java
 @Test
 @DisplayName("성공: 알림이 중간에 중단된다 (품절 발생)")
 void sendNotifications_StopsWhenOutOfStock() {
@@ -468,7 +468,7 @@ void sendNotifications_StopsWhenOutOfStock() {
 ```
 #### **getLatestNotificationHistory_Success()**
 - 최신 알림 이력이 정상적으로 조회되는지 테스트합니다.
-```code
+```java
 @Test
 @DisplayName("성공: 알림 이력을 가져온다.")
 void getLatestNotificationHistory_Success() {
@@ -488,7 +488,7 @@ void getLatestNotificationHistory_Success() {
 ```
 #### **getLatestNotificationHistory_Fail()**
 - 알림 이력이 없을 때 예외가 발생하는지 테스트합니다.
-```code
+```java
 @Test
 @DisplayName("실패: 알림 이력을 가져오지 못할 때 예외 발생")
 void getLatestNotificationHistory_Fail() {
@@ -552,5 +552,153 @@ void setUp() {
     productUserNotificationRepository.save(user1);
     productUserNotificationRepository.save(user2);
 }
+```
+#### **restockProduct_Success**
+-재입고 로직 실행
+  - 재입고 서비스 호출 → 상품 재입고 완료, 알림 전송 시작
+- 상품의 재입고 회차 증가
+  - 상품의 RestockRound가 1 → 2로 정상 증가했는지 확인
+- 알림 내역 상태 검증
+  - 상품 알림 내역의 상태가 "COMPLETED" 상태로 변경되었는지 확인
+- 알림 전송 내역 검증
+  - 상품 재입고 후, 알림을 받은 2명의 사용자에 대한 내역이 존재하는지 확인
+```java
+ @Test
+    @DisplayName("통합 테스트: 상품 재입고가 정상적으로 이루어진다.")
+    void restockProduct_Success() {
+        // When
+        RestockResponseDto responseDto = restockNotificationService.restockProduct(product.getId());
 
+        // Then
+        Product updatedProduct = productRepository.findById(product.getId()).orElseThrow();
+        assertThat(updatedProduct.getRestockRound()).isEqualTo(2); // 🔥 재입고 회차가 1 -> 2 증가
+
+        // 알림 내역 확인
+        ProductNotificationHistory notificationHistory = productNotificationHistoryRepository
+                .findTopByProductIdOrderByCreatedAtDesc(product.getId())
+                .orElseThrow();
+
+        assertThat(notificationHistory.getStatus()).isEqualTo(NotificationStatus.COMPLETED); // 🔥 알림 완료 상태 확인
+
+        // 알림이 두 명에게 전송되었는지 확인
+        List<ProductUserNotificationHistory> notificationHistories = productUserNotificationHistoryRepository.findAll();
+        assertThat(notificationHistories).hasSize(2);
+    }
+```
+<details>
+  <summary>🖼️ restockProduct_Success 실행 화면 보기</summary>
+  <br>
+  <img src="https://github.com/user-attachments/assets/ed547720-905f-4e8b-b085-42ca1ac51ab8" alt="restockProduct_Success" style="max-width:100%;"/>
+</details>
+
+#### **restockProduct_StopsWhenOutOfStock**
+- 재고가 1이었기 때문에 1명에게만 알림이 발송.
+- 재고가 0이 되자, 알림 내역이 "CANCELED_BY_SOLD_OUT" 상태로 변경.
+- 알림이 2명에게 발송되지 않고 1명에게만 전송된 후 중단.
+
+```java
+@Test
+    @DisplayName("통합 테스트: 재입고 도중 품절이 발생하면 알림이 중단된다.")
+    void restockProduct_StopsWhenOutOfStock() {
+        // 🔥 상품의 재고를 1로 설정 (두 명에게 알림을 보내다가 중단됨)
+        product.addStock(1); // 재고 1로 설정
+        productRepository.save(product);
+
+        // When
+        RestockResponseDto responseDto = restockNotificationService.restockProduct(product.getId());
+
+        // Then
+        Product updatedProduct = productRepository.findById(product.getId()).orElseThrow();
+        assertThat(updatedProduct.getStock()).isEqualTo(0); // 🔥 재고가 0이어야 함 (품절)
+
+        // 알림 내역 확인
+        ProductNotificationHistory notificationHistory = productNotificationHistoryRepository
+                .findTopByProductIdOrderByCreatedAtDesc(product.getId())
+                .orElseThrow();
+
+        assertThat(notificationHistory.getStatus()).isEqualTo(NotificationStatus.CANCELED_BY_SOLD_OUT); // 🔥 품절로 인한 중단 상태
+
+        // 알림이 한 명에게만 전송되었는지 확인
+        List<ProductUserNotificationHistory> notificationHistories = productUserNotificationHistoryRepository.findAll();
+        assertThat(notificationHistories).hasSize(1); // 🔥 알림 1개만 있어야 함
+    }
+```
+
+<details>
+  <summary>🖼️ restockProduct_StopsWhenOutOfStock 실행 화면 보기</summary>
+  <br>
+  <img src="https://github.com/user-attachments/assets/2b8b07e3-db10-42e4-b173-0df72e81eaef" alt="restockProduct_StopsWhenOutOfStock" style="max-width:100%;"/>
+</details>
+
+#### **retryNotification_Successk**
+- 품 재입고 후, 특정 조건에 따라 알림을 다시 재발송하는 기능을 검증합니다.
+- 중요 포인트: 첫 번째 알림 발송 이후, 이미 알림을 받은 사용자에게는 재발송하지 않고 나머지 사용자에게만 재발송이 이루어지는지를 확인합니다.
+- 첫 번째 알림 발송: 2명에게 알림 발송 (알림 2개 생성)
+- 알림 재발송: 2명에게 다시 발송 (알림 2개 생성)
+- 검증: 알림 내역이 4개인지 확인 (2명 * 2회 = 4개)
+- 알림 상태 검증: 알림 내역의 상태가 **"COMPLETED"**로 설정되었는지 확인
+```java
+@Test
+    @DisplayName("통합 테스트: 알림 재발송이 정상적으로 이루어진다.")
+    void retryNotification_Success() {
+        // 🔥 1차 알림 전송 (2명의 유저에게 전송됨)
+        restockNotificationService.restockProduct(product.getId());
+
+        // 🔥 2차 알림 재발송 (첫 번째 유저는 이미 받았으므로 두 번째 유저부터 다시 시작)
+        RestockResponseDto responseDto = restockNotificationService.retryNotification(product.getId());
+
+        // Then
+        ProductNotificationHistory notificationHistory = productNotificationHistoryRepository
+                .findTopByProductIdOrderByCreatedAtDesc(product.getId())
+                .orElseThrow();
+
+        assertThat(notificationHistory.getStatus()).isEqualTo(NotificationStatus.COMPLETED); // 🔥 재발송이 완료되었는지 확인
+
+        // 알림 이력 확인 (이미 발송된 유저를 제외하고 재발송이 이루어졌는지 확인)
+        List<ProductUserNotificationHistory> notificationHistories = productUserNotificationHistoryRepository.findAll();
+        assertThat(notificationHistories).hasSize(4); // 🔥 총 2명 * 2번 발송 = 4개의 알림 기록
+    }
+```
+<details>
+  <summary>🖼️ retryNotification_Successk 실행 화면 보기</summary>
+  <br>
+  <img src="https://github.com/user-attachments/assets/b02ba5d9-cd17-4d5b-a34c-abb2f8c3fe0d" alt="retryNotification_Successk" style="max-width:100%;"/>
+</details>
+
+#### **findProductById_Fail_ProductNotFound**
+- 존재하지 않는 상품을 조회할 때 예외가 발생하는지 검증합니다.
+- 일부로 IllegalArgumentException를 호출시켜 로그 확인
+```java
+@Test
+    @DisplayName("통합 테스트: 상품 조회 후 예외가 발생한다.")
+    void findProductById_Fail_ProductNotFound() {
+        // When & Then
+        assertThrows(IllegalArgumentException.class,
+                () -> restockNotificationService.findProductById(999L));
+    }
+```
+
+<details>
+  <summary>🖼️ findProductById_Fail_ProductNotFound 실행 화면 보기</summary>
+  <br>
+  <img src="https://github.com/user-attachments/assets/e29c98ea-aaa4-4832-9d52-55b1ac3ac8c5" alt="findProductById_Fail_ProductNotFound" style="max-width:100%;"/>
+</details>
+
+#### **retryNotification_Fail_NoNotificationHistory**
+- 재입고 이력이 없는 상태에서 알림 재발송을 시도했을 때 예외가 발생하는지 검증합니다.
+- 일부로 IllegalArgumentException를 호출시켜 로그 확인
+```java
+ @Test
+    @DisplayName("통합 테스트: 재입고 이력이 없을 때 예외가 발생한다.")
+    void retryNotification_Fail_NoNotificationHistory() {
+        // When & Then
+        assertThrows(IllegalArgumentException.class,
+                () -> restockNotificationService.retryNotification(999L));
+    }
+```
+<details>
+  <summary>🖼️ retryNotification_Fail_NoNotificationHistory 실행 화면 보기</summary>
+  <br>
+  <img src="https://github.com/user-attachments/assets/e943b741-f839-42c6-a46f-403fd546450c" alt="retryNotification_Fail_NoNotificationHistory" style="max-width:100%;"/>
+</details>
 
